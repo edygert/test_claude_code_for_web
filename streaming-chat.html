@@ -80,28 +80,25 @@
                     const recognitionInstance = new SpeechRecognition();
                     recognitionInstance.continuous = true;
                     recognitionInstance.interimResults = true;
-                    recognitionInstance.lang = 'zh-TW';
+                    recognitionInstance.lang = 'zh-CN';
 
                     recognitionInstance.onresult = (event) => {
-                        let interim = '';
-                        let final = '';
+                        let finalTranscript = '';
+                        let interimTranscript = '';
 
-                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                        // Process ALL results to get complete transcript
+                        for (let i = 0; i < event.results.length; i++) {
                             const transcript = event.results[i][0].transcript;
-                            
+
                             if (event.results[i].isFinal) {
-                                final += transcript;
+                                finalTranscript += transcript;
                             } else {
-                                interim += transcript;
+                                interimTranscript += transcript;
                             }
                         }
 
-                        // Show interim in real-time for preview
-                        if (interim) {
-                            setInterimTranscript(prev => prev + final + interim);
-                        } else if (final) {
-                            setInterimTranscript(prev => prev + final);
-                        }
+                        // Replace entire interim transcript (no accumulation to avoid repetition)
+                        setInterimTranscript(finalTranscript + interimTranscript);
                     };
 
                     recognitionInstance.onerror = (event) => {
