@@ -72,6 +72,7 @@
             const [recognition, setRecognition] = useState(null);
             const [interimTranscript, setInterimTranscript] = useState('');
             const finalTranscriptRef = useRef('');
+            const pauseTimeoutRef = useRef(null);
 
             // Simplified to Traditional Chinese character conversion map
             const simplifiedToTraditional = {
@@ -266,6 +267,11 @@
                     recognitionInstance.onresult = (event) => {
                         let interim = '';
 
+                        // Clear existing pause timeout
+                        if (pauseTimeoutRef.current) {
+                            clearTimeout(pauseTimeoutRef.current);
+                        }
+
                         // Only process NEW results starting from resultIndex to avoid repetition
                         for (let i = event.resultIndex; i < event.results.length; i++) {
                             const transcript = event.results[i][0].transcript;
@@ -280,7 +286,17 @@
                         }
 
                         // Display accumulated finals + current interim (convert interim too)
-                        setInterimTranscript(finalTranscriptRef.current + convertToTraditional(interim));
+                        const fullTranscript = finalTranscriptRef.current + convertToTraditional(interim);
+                        setInterimTranscript(fullTranscript);
+
+                        // Set new pause timeout - if user pauses for 1 second, auto-transfer text
+                        pauseTimeoutRef.current = setTimeout(() => {
+                            if (finalTranscriptRef.current) {
+                                setInput(prev => prev + finalTranscriptRef.current);
+                                setInterimTranscript('');
+                                finalTranscriptRef.current = '';
+                            }
+                        }, 1000);
                     };
 
                     recognitionInstance.onerror = (event) => {
@@ -288,6 +304,10 @@
                         setIsRecording(false);
                         setInterimTranscript('');
                         finalTranscriptRef.current = '';
+                        if (pauseTimeoutRef.current) {
+                            clearTimeout(pauseTimeoutRef.current);
+                            pauseTimeoutRef.current = null;
+                        }
                     };
 
                     recognitionInstance.onend = () => {
@@ -307,12 +327,22 @@
                 setError('');
                 setInterimTranscript('');
                 finalTranscriptRef.current = '';
+                if (pauseTimeoutRef.current) {
+                    clearTimeout(pauseTimeoutRef.current);
+                    pauseTimeoutRef.current = null;
+                }
                 setIsRecording(true);
                 recognition.start();
             };
 
             const handleStopRecording = () => {
                 if (recognition) {
+                    // Clear pause timeout
+                    if (pauseTimeoutRef.current) {
+                        clearTimeout(pauseTimeoutRef.current);
+                        pauseTimeoutRef.current = null;
+                    }
+
                     recognition.stop();
                     // Transfer accumulated transcript to input field
                     if (interimTranscript) {
