@@ -403,15 +403,27 @@
 
                                 try {
                                     const parsed = JSON.parse(data);
-                                    
+
                                     if (parsed.error) {
                                         setError(parsed.error);
                                         setIsLoading(false);
                                         return;
                                     }
-                                    
-                                    if (parsed.content) {
-                                        setResponse(prev => prev + parsed.content);
+
+                                    // Handle different streaming formats
+                                    let content = null;
+
+                                    // OpenAI-style format: choices[0].delta.content
+                                    if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+                                        content = parsed.choices[0].delta.content;
+                                    }
+                                    // Simple format: content
+                                    else if (parsed.content) {
+                                        content = parsed.content;
+                                    }
+
+                                    if (content) {
+                                        setResponse(prev => prev + content);
                                     }
                                 } catch (e) {
                                     // Skip malformed JSON
