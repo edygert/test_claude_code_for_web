@@ -54,6 +54,11 @@
         }
         .error {
             color: red;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #ffebee;
+            border: 1px solid #ef5350;
+            border-radius: 4px;
         }
     </style>
 </head>
@@ -61,107 +66,147 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef, useCallback } = React;
 
-        function App() {
-            const [input, setInput] = useState('');
-            const [response, setResponse] = useState('');
-            const [isLoading, setIsLoading] = useState(false);
-            const [error, setError] = useState('');
+        // ============================================================
+        // Custom Hook: Speech Recognition
+        // ============================================================
+        function useSpeechRecognition(language = 'zh-TW') {
             const [isRecording, setIsRecording] = useState(false);
-            const [recognition, setRecognition] = useState(null);
             const [interimTranscript, setInterimTranscript] = useState('');
+            const [finalTranscript, setFinalTranscript] = useState('');
+            const [error, setError] = useState('');
+            const recognitionRef = useRef(null);
 
+            // Initialize speech recognition
             useEffect(() => {
-                // Initialize speech recognition
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                
-                if (SpeechRecognition) {
-                    const recognitionInstance = new SpeechRecognition();
-                    recognitionInstance.continuous = true;
-                    recognitionInstance.interimResults = true;
-                    recognitionInstance.lang = 'zh-TW';
 
-                    recognitionInstance.onresult = (event) => {
-                        let interim = '';
-                        let final = '';
-
-                        for (let i = event.resultIndex; i < event.results.length; i++) {
-                            const transcript = event.results[i][0].transcript;
-                            
-                            if (event.results[i].isFinal) {
-                                final += transcript;
-                            } else {
-                                interim += transcript;
-                            }
-                        }
-
-                        // Show interim in real-time for preview
-                        if (interim) {
-                            setInterimTranscript(prev => prev + final + interim);
-                        } else if (final) {
-                            setInterimTranscript(prev => prev + final);
-                        }
-                    };
-
-                    recognitionInstance.onerror = (event) => {
-                        setError(`Speech recognition error: ${event.error}`);
-                        setIsRecording(false);
-                        setInterimTranscript('');
-                    };
-
-                    recognitionInstance.onend = () => {
-                        setIsRecording(false);
-                    };
-
-                    setRecognition(recognitionInstance);
+                if (!SpeechRecognition) {
+                    setError('Speech recognition is not supported in this browser');
+                    return;
                 }
-            }, []);
 
-            const handleStartRecording = () => {
-                if (!recognition) {
-                    setError('Speech recognition not supported in this browser');
+                const recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = language;
+
+                recognition.onresult = (event) => {
+                    let interim = '';
+                    let final = '';
+
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const transcript = event.results[i][0].transcript;
+
+                        if (event.results[i].isFinal) {
+                            final += transcript;
+                        } else {
+                            interim += transcript;
+                        }
+                    }
+
+                    if (final) {
+                        setFinalTranscript(prev => prev + final);
+                    }
+                    setInterimTranscript(interim);
+                };
+
+                recognition.onerror = (event) => {
+                    setError(`Speech recognition error: ${event.error}`);
+                    setIsRecording(false);
+                };
+
+                recognition.onend = () => {
+                    setIsRecording(false);
+                };
+
+                recognitionRef.current = recognition;
+
+                return () => {
+                    if (recognitionRef.current) {
+                        recognitionRef.current.abort();
+                    }
+                };
+            }, [language]);
+
+            const startRecording = useCallback(() => {
+                if (!recognitionRef.current) {
+                    setError('Speech recognition not available');
                     return;
                 }
 
                 setError('');
                 setInterimTranscript('');
+                setFinalTranscript('');
                 setIsRecording(true);
-                recognition.start();
-            };
 
-            const handleStopRecording = () => {
-                if (recognition) {
-                    recognition.stop();
-                    // Transfer accumulated transcript to input field
-                    if (interimTranscript) {
-                        setInput(prev => prev + interimTranscript);
-                        setInterimTranscript('');
-                    }
+                try {
+                    recognitionRef.current.start();
+                } catch (err) {
+                    setError(`Failed to start recording: ${err.message}`);
+                    setIsRecording(false);
                 }
-            };
+            }, []);
 
-            const handleSubmit = async (e) => {
-                e.preventDefault();
-                
-                if (!input.trim()) return;
+            const stopRecording = useCallback(() => {
+                if (recognitionRef.current && isRecording) {
+                    recognitionRef.current.stop();
+                }
+            }, [isRecording]);
+
+            const resetTranscript = useCallback(() => {
+                setInterimTranscript('');
+                setFinalTranscript('');
+            }, []);
+
+            const getFullTranscript = useCallback(() => {
+                return finalTranscript + interimTranscript;
+            }, [finalTranscript, interimTranscript]);
+
+            return {
+                isRecording,
+                interimTranscript,
+                finalTranscript,
+                error,
+                startRecording,
+                stopRecording,
+                resetTranscript,
+                getFullTranscript,
+                isSupported: !!recognitionRef.current
+            };
+        }
+
+        // ============================================================
+        // Custom Hook: Streaming Chat
+        // ============================================================
+        function useStreamingChat(apiUrl = 'http://localhost:8000/v1/chat/completions') {
+            const [response, setResponse] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const [error, setError] = useState('');
+
+            const sendMessage = useCallback(async (message, options = {}) => {
+                if (!message.trim()) {
+                    setError('Message cannot be empty');
+                    return;
+                }
 
                 setIsLoading(true);
                 setError('');
                 setResponse('');
 
                 try {
-                    const res = await fetch('http://localhost:8000/v1/chat/completions', {
+                    const res = await fetch(apiUrl, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
                             messages: [
-                                { role: 'user', content: input }
+                                { role: 'user', content: message }
                             ],
-                            max_tokens: 1024,
-                            temperature: 0.7
+                            max_tokens: options.maxTokens || 1024,
+                            temperature: options.temperature || 0.7
                         })
                     });
 
@@ -182,7 +227,7 @@
                         for (const line of lines) {
                             if (line.startsWith('data: ')) {
                                 const data = line.slice(6);
-                                
+
                                 if (data === '[DONE]') {
                                     setIsLoading(false);
                                     return;
@@ -190,13 +235,13 @@
 
                                 try {
                                     const parsed = JSON.parse(data);
-                                    
+
                                     if (parsed.error) {
                                         setError(parsed.error);
                                         setIsLoading(false);
                                         return;
                                     }
-                                    
+
                                     if (parsed.content) {
                                         setResponse(prev => prev + parsed.content);
                                     }
@@ -211,49 +256,158 @@
                 } finally {
                     setIsLoading(false);
                 }
+            }, [apiUrl]);
+
+            const resetResponse = useCallback(() => {
+                setResponse('');
+                setError('');
+            }, []);
+
+            return {
+                response,
+                isLoading,
+                error,
+                sendMessage,
+                resetResponse
             };
+        }
 
+        // ============================================================
+        // Component: Error Message
+        // ============================================================
+        function ErrorMessage({ error }) {
+            if (!error) return null;
+            return <div className="error">{error}</div>;
+        }
+
+        // ============================================================
+        // Component: Interim Preview
+        // ============================================================
+        function InterimPreview({ isVisible, transcript }) {
+            if (!isVisible || !transcript) return null;
             return (
-                <div>
-                    <h1>AI Streaming Chat</h1>
-                    
-                    <form onSubmit={handleSubmit} className="input-container">
-                        <input
-                            type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            placeholder="Type your message..."
-                            disabled={isLoading}
-                            className={isRecording ? 'recording' : ''}
-                        />
-                        <button 
-                            type="button"
-                            onClick={isRecording ? handleStopRecording : handleStartRecording}
-                            disabled={isLoading}
-                            style={{ backgroundColor: isRecording ? '#ff4444' : '#4CAF50' }}
-                        >
-                            {isRecording ? '⏹ Stop' : '🎤 Record'}
-                        </button>
-                        <button type="submit" disabled={isLoading || !input.trim()}>
-                            {isLoading ? 'Sending...' : 'Send'}
-                        </button>
-                    </form>
-
-                    {isRecording && interimTranscript && (
-                        <div className="interim-preview">
-                            Preview: {interimTranscript}
-                        </div>
-                    )}
-
-                    {error && <div className="error">{error}</div>}
-
-                    <div className="response-container">
-                        {response || 'Response will appear here...'}
-                    </div>
+                <div className="interim-preview">
+                    Preview: {transcript}
                 </div>
             );
         }
 
+        // ============================================================
+        // Component: Speech Input
+        // ============================================================
+        function SpeechInput({
+            value,
+            onChange,
+            onSubmit,
+            isRecording,
+            onStartRecording,
+            onStopRecording,
+            disabled
+        }) {
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                onSubmit();
+            };
+
+            return (
+                <form onSubmit={handleSubmit} className="input-container">
+                    <input
+                        type="text"
+                        value={value}
+                        onChange={(e) => onChange(e.target.value)}
+                        placeholder="Type your message..."
+                        disabled={disabled}
+                        className={isRecording ? 'recording' : ''}
+                    />
+                    <button
+                        type="button"
+                        onClick={isRecording ? onStopRecording : onStartRecording}
+                        disabled={disabled}
+                        style={{ backgroundColor: isRecording ? '#ff4444' : '#4CAF50' }}
+                    >
+                        {isRecording ? '⏹ Stop' : '🎤 Record'}
+                    </button>
+                    <button type="submit" disabled={disabled || !value.trim()}>
+                        {disabled ? 'Sending...' : 'Send'}
+                    </button>
+                </form>
+            );
+        }
+
+        // ============================================================
+        // Component: Response Display
+        // ============================================================
+        function ResponseDisplay({ response }) {
+            return (
+                <div className="response-container">
+                    {response || 'Response will appear here...'}
+                </div>
+            );
+        }
+
+        // ============================================================
+        // Main App Component
+        // ============================================================
+        function App() {
+            const [inputText, setInputText] = useState('');
+
+            // Use custom hooks
+            const speech = useSpeechRecognition('zh-TW');
+            const chat = useStreamingChat();
+
+            // Handle recording start
+            const handleStartRecording = () => {
+                speech.startRecording();
+            };
+
+            // Handle recording stop
+            const handleStopRecording = () => {
+                speech.stopRecording();
+                // Transfer transcript to input field
+                const transcript = speech.getFullTranscript();
+                if (transcript) {
+                    setInputText(prev => prev + transcript);
+                    speech.resetTranscript();
+                }
+            };
+
+            // Handle message submission
+            const handleSubmit = () => {
+                if (!inputText.trim()) return;
+                chat.sendMessage(inputText);
+                setInputText('');
+            };
+
+            // Combine errors from both hooks
+            const error = speech.error || chat.error;
+
+            return (
+                <div>
+                    <h1>AI Streaming Chat</h1>
+
+                    <SpeechInput
+                        value={inputText}
+                        onChange={setInputText}
+                        onSubmit={handleSubmit}
+                        isRecording={speech.isRecording}
+                        onStartRecording={handleStartRecording}
+                        onStopRecording={handleStopRecording}
+                        disabled={chat.isLoading}
+                    />
+
+                    <InterimPreview
+                        isVisible={speech.isRecording}
+                        transcript={speech.getFullTranscript()}
+                    />
+
+                    <ErrorMessage error={error} />
+
+                    <ResponseDisplay response={chat.response} />
+                </div>
+            );
+        }
+
+        // Render the app
         ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
