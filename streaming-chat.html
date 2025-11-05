@@ -62,7 +62,6 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
-        const { flushSync } = ReactDOM;
 
         function App() {
             const [input, setInput] = useState('');
@@ -368,7 +367,6 @@
 
                 // Track timing for first chunk
                 const requestStartTime = performance.now();
-                console.log('⏱️ Request sent at:', requestStartTime);
                 let firstChunkTime = null;
 
                 try {
@@ -392,25 +390,18 @@
 
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder();
-                    let chunkCount = 0;
-
-                    console.log('🎬 Starting to receive streaming response...');
 
                     while (true) {
                         const { value, done } = await reader.read();
                         if (done) {
                             const totalTime = performance.now() - requestStartTime;
-                            console.log('✅ Stream complete. Total chunks received:', chunkCount);
-                            console.log('⏱️ Total streaming time:', totalTime.toFixed(2), 'ms');
                             if (firstChunkTime) {
-                                console.log('📊 TTFC:', (firstChunkTime - requestStartTime).toFixed(2), 'ms');
+                                console.log('TTFC:', (firstChunkTime - requestStartTime).toFixed(2), 'ms | Total:', totalTime.toFixed(2), 'ms');
                             }
                             break;
                         }
 
                         const chunk = decoder.decode(value);
-                        console.log(`📦 Chunk ${++chunkCount} received:`, chunk.substring(0, 100) + (chunk.length > 100 ? '...' : ''));
-
                         const lines = chunk.split('\n');
 
                         for (const line of lines) {
@@ -418,17 +409,14 @@
                                 const data = line.slice(6);
 
                                 if (data === '[DONE]') {
-                                    console.log('🏁 Received [DONE] signal');
                                     setIsLoading(false);
                                     return;
                                 }
 
                                 try {
                                     const parsed = JSON.parse(data);
-                                    console.log('📝 Parsed data:', parsed);
 
                                     if (parsed.error) {
-                                        console.error('❌ Error in response:', parsed.error);
                                         setError(parsed.error);
                                         setIsLoading(false);
                                         return;
@@ -440,39 +428,27 @@
                                     // OpenAI-style format: choices[0].delta.content
                                     if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
                                         content = parsed.choices[0].delta.content;
-                                        console.log('✨ Extracted content (OpenAI format):', content);
                                     }
                                     // Simple format: content
                                     else if (parsed.content) {
                                         content = parsed.content;
-                                        console.log('✨ Extracted content (Simple format):', content);
                                     }
 
                                     if (content) {
                                         // Record time to first chunk
                                         if (firstChunkTime === null) {
                                             firstChunkTime = performance.now();
-                                            const latency = firstChunkTime - requestStartTime;
-                                            console.log('⏱️ First chunk received at:', firstChunkTime);
-                                            console.log('🚀 Time to first chunk (TTFC):', latency.toFixed(2), 'ms');
                                         }
 
-                                        console.log('➕ Adding to response:', content);
                                         // Update response state and increment version to force render
-                                        setResponse(prev => {
-                                            const newResponse = prev + content;
-                                            console.log('🔄 State update: prev length:', prev.length, 'new length:', newResponse.length);
-                                            return newResponse;
-                                        });
+                                        setResponse(prev => prev + content);
                                         setResponseVersion(v => v + 1);
 
                                         // Yield control to browser to allow painting
                                         await new Promise(resolve => setTimeout(resolve, 10));
-                                    } else {
-                                        console.log('⚠️ No content found in chunk');
                                     }
                                 } catch (e) {
-                                    console.warn('⚠️ Failed to parse JSON:', data, 'Error:', e.message);
+                                    // Skip malformed JSON
                                 }
                             }
                         }
