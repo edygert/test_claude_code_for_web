@@ -290,13 +290,14 @@
                         setInterimTranscript(fullTranscript);
 
                         // Set new pause timeout - if user pauses for 1 second, auto-transfer text
-                        pauseTimeoutRef.current = setTimeout(() => {
-                            if (finalTranscriptRef.current) {
-                                setInput(prev => prev + finalTranscriptRef.current);
+                        // Capture fullTranscript in closure to ensure we transfer everything
+                        if (fullTranscript) {
+                            pauseTimeoutRef.current = setTimeout(() => {
+                                setInput(prev => prev + fullTranscript);
                                 setInterimTranscript('');
                                 finalTranscriptRef.current = '';
-                            }
-                        }, 1000);
+                            }, 1000);
+                        }
                     };
 
                     recognitionInstance.onerror = (event) => {
