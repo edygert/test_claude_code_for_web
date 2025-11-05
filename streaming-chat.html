@@ -67,6 +67,7 @@
         function App() {
             const [input, setInput] = useState('');
             const [response, setResponse] = useState('');
+            const [responseVersion, setResponseVersion] = useState(0);
             const [isLoading, setIsLoading] = useState(false);
             const [error, setError] = useState('');
             const [isRecording, setIsRecording] = useState(false);
@@ -363,6 +364,7 @@
                 setIsLoading(true);
                 setError('');
                 setResponse('');
+                setResponseVersion(0);
 
                 try {
                     const res = await fetch('http://localhost:8000/v1/chat/completions', {
@@ -438,10 +440,13 @@
 
                                     if (content) {
                                         console.log('➕ Adding to response:', content);
-                                        // Use flushSync to force immediate DOM update for incremental display
-                                        flushSync(() => {
-                                            setResponse(prev => prev + content);
+                                        // Update response state and increment version to force render
+                                        setResponse(prev => {
+                                            const newResponse = prev + content;
+                                            console.log('🔄 State update: prev length:', prev.length, 'new length:', newResponse.length);
+                                            return newResponse;
                                         });
+                                        setResponseVersion(v => v + 1);
                                     } else {
                                         console.log('⚠️ No content found in chunk');
                                     }
@@ -492,7 +497,7 @@
 
                     {error && <div className="error">{error}</div>}
 
-                    <div className="response-container">
+                    <div className="response-container" key={responseVersion}>
                         {response || 'Response will appear here...'}
                     </div>
                 </div>
