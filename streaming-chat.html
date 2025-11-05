@@ -447,6 +447,9 @@
                                             return newResponse;
                                         });
                                         setResponseVersion(v => v + 1);
+
+                                        // Yield control to browser to allow painting
+                                        await new Promise(resolve => setTimeout(resolve, 10));
                                     } else {
                                         console.log('⚠️ No content found in chunk');
                                     }
