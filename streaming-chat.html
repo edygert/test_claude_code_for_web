@@ -62,6 +62,7 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+        const { flushSync } = ReactDOM;
 
         function App() {
             const [input, setInput] = useState('');
@@ -437,7 +438,10 @@
 
                                     if (content) {
                                         console.log('➕ Adding to response:', content);
-                                        setResponse(prev => prev + content);
+                                        // Use flushSync to force immediate DOM update for incremental display
+                                        flushSync(() => {
+                                            setResponse(prev => prev + content);
+                                        });
                                     } else {
                                         console.log('⚠️ No content found in chunk');
                                     }
