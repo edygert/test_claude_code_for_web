@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Streaming Chat</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .input-container {
+            margin-bottom: 20px;
+        }
+        input {
+            width: 70%;
+            padding: 10px;
+            font-size: 16px;
+        }
+        input.recording {
+            background-color: #fff3cd;
+            border-color: #ffc107;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .response-container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            min-height: 200px;
+            white-space: pre-wrap;
+            background-color: #f9f9f9;
+        }
+        .interim-preview {
+            border: 1px solid #ffc107;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #fff3cd;
+            min-height: 30px;
+            font-style: italic;
+            color: #856404;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [input, setInput] = useState('');
+            const [response, setResponse] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [isRecording, setIsRecording] = useState(false);
+            const [recognition, setRecognition] = useState(null);
+            const [interimTranscript, setInterimTranscript] = useState('');
+
+            useEffect(() => {
+                // Initialize speech recognition
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                
+                if (SpeechRecognition) {
+                    const recognitionInstance = new SpeechRecognition();
+                    recognitionInstance.continuous = true;
+                    recognitionInstance.interimResults = true;
+                    recognitionInstance.lang = 'zh-TW';
+
+                    recognitionInstance.onresult = (event) => {
+                        let interim = '';
+                        let final = '';
+
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                            const transcript = event.results[i][0].transcript;
+                            
+                            if (event.results[i].isFinal) {
+                                final += transcript;
+                            } else {
+                                interim += transcript;
+                            }
+                        }
+
+                        // Show interim in real-time for preview
+                        if (interim) {
+                            setInterimTranscript(prev => prev + final + interim);
+                        } else if (final) {
+                            setInterimTranscript(prev => prev + final);
+                        }
+                    };
+
+                    recognitionInstance.onerror = (event) => {
+                        setError(`Speech recognition error: ${event.error}`);
+                        setIsRecording(false);
+                        setInterimTranscript('');
+                    };
+
+                    recognitionInstance.onend = () => {
+                        setIsRecording(false);
+                    };
+
+                    setRecognition(recognitionInstance);
+                }
+            }, []);
+
+            const handleStartRecording = () => {
+                if (!recognition) {
+                    setError('Speech recognition not supported in this browser');
+                    return;
+                }
+
+                setError('');
+                setInterimTranscript('');
+                setIsRecording(true);
+                recognition.start();
+            };
+
+            const handleStopRecording = () => {
+                if (recognition) {
+                    recognition.stop();
+                    // Transfer accumulated transcript to input field
+                    if (interimTranscript) {
+                        setInput(prev => prev + interimTranscript);
+                        setInterimTranscript('');
+                    }
+                }
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
+                if (!input.trim()) return;
+
+                setIsLoading(true);
+                setError('');
+                setResponse('');
+
+                try {
+                    const res = await fetch('http://localhost:8000/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            messages: [
+                                { role: 'user', content: input }
+                            ],
+                            max_tokens: 1024,
+                            temperature: 0.7
+                        })
+                    });
+
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
+
+                        const chunk = decoder.decode(value);
+                        const lines = chunk.split('\n');
+
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                
+                                if (data === '[DONE]') {
+                                    setIsLoading(false);
+                                    return;
+                                }
+
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    
+                                    if (parsed.error) {
+                                        setError(parsed.error);
+                                        setIsLoading(false);
+                                        return;
+                                    }
+                                    
+                                    if (parsed.content) {
+                                        setResponse(prev => prev + parsed.content);
+                                    }
+                                } catch (e) {
+                                    // Skip malformed JSON
+                                }
+                            }
+                        }
+                    }
+                } catch (err) {
+                    setError(`Error: ${err.message}`);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            return (
+                <div>
+                    <h1>AI Streaming Chat</h1>
+                    
+                    <form onSubmit={handleSubmit} className="input-container">
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            placeholder="Type your message..."
+                            disabled={isLoading}
+                            className={isRecording ? 'recording' : ''}
+                        />
+                        <button 
+                            type="button"
+                            onClick={isRecording ? handleStopRecording : handleStartRecording}
+                            disabled={isLoading}
+                            style={{ backgroundColor: isRecording ? '#ff4444' : '#4CAF50' }}
+                        >
+                            {isRecording ? '⏹ Stop' : '🎤 Record'}
+                        </button>
+                        <button type="submit" disabled={isLoading || !input.trim()}>
+                            {isLoading ? 'Sending...' : 'Send'}
+                        </button>
+                    </form>
+
+                    {isRecording && interimTranscript && (
+                        <div className="interim-preview">
+                            Preview: {interimTranscript}
+                        </div>
+                    )}
+
+                    {error && <div className="error">{error}</div>}
+
+                    <div className="response-container">
+                        {response || 'Response will appear here...'}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
