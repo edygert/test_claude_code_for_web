@@ -365,6 +365,10 @@
                 setResponse('');
                 setResponseVersion(0);
 
+                // Track timing for first chunk
+                const requestStartTime = performance.now();
+                let firstChunkTime = null;
+
                 try {
                     const res = await fetch('http://localhost:8000/v1/chat/completions', {
                         method: 'POST',
@@ -389,7 +393,13 @@
 
                     while (true) {
                         const { value, done } = await reader.read();
-                        if (done) break;
+                        if (done) {
+                            const totalTime = performance.now() - requestStartTime;
+                            if (firstChunkTime) {
+                                console.log('TTFC:', (firstChunkTime - requestStartTime).toFixed(2), 'ms | Total:', totalTime.toFixed(2), 'ms');
+                            }
+                            break;
+                        }
 
                         const chunk = decoder.decode(value);
                         const lines = chunk.split('\n');
@@ -425,6 +435,11 @@
                                     }
 
                                     if (content) {
+                                        // Record time to first chunk
+                                        if (firstChunkTime === null) {
+                                            firstChunkTime = performance.now();
+                                        }
+
                                         // Update response state and increment version to force render
                                         setResponse(prev => prev + content);
                                         setResponseVersion(v => v + 1);
