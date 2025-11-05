@@ -26,47 +26,58 @@ async def warmup_model():
     Background task to keep the model warm by sending periodic requests.
     This reduces Time To First Token (TTFT) by preventing cold starts.
     """
-    # Wait a bit before starting warmup to let the app initialize
-    await asyncio.sleep(30)
-
     warmup_interval = 120  # Send warmup request every 2 minutes
 
-    print(f"🔥 Model warmup task started (interval: {warmup_interval}s)")
+    print(f"🔥 Model warmup task starting (will send first warmup in 30s, then every {warmup_interval}s)")
+
+    # Wait a bit before first warmup to let the app initialize
+    await asyncio.sleep(30)
 
     while True:
         try:
-            await asyncio.sleep(warmup_interval)
-
             if _provider is None:
                 print("⚠️ Warmup: Provider not initialized, skipping")
+                await asyncio.sleep(warmup_interval)
                 continue
 
             # Create a minimal warmup request
             warmup_request = StreamingRequest(
                 messages=[Message(role="user", content="Hi")],
-                max_tokens=10,
+                max_tokens=50,  # Increased to ensure full model warmup
                 temperature=0.7
             )
 
-            print("🔥 Sending warmup request to keep model warm...")
+            print(f"🔥 Sending warmup request at {asyncio.get_event_loop().time():.2f}...")
             warmup_start = asyncio.get_event_loop().time()
 
-            # Consume just the first chunk to trigger model loading
+            # Consume the ENTIRE response to ensure model is fully warmed
             chunk_count = 0
+            content_received = False
             async for chunk in _provider.stream_completion(warmup_request):
                 chunk_count += 1
-                if chunk_count >= 2:  # Get first content chunk
-                    break
+                if chunk.content:
+                    content_received = True
+                    if chunk_count == 1:
+                        ttfc = (asyncio.get_event_loop().time() - warmup_start) * 1000
+                        print(f"   ├─ TTFC in warmup: {ttfc:.0f}ms")
+                # Don't break - consume entire response
 
             warmup_time = (asyncio.get_event_loop().time() - warmup_start) * 1000
-            print(f"✅ Warmup complete in {warmup_time:.0f}ms (model should stay warm for ~5-10 min)")
+            print(f"✅ Warmup complete: {warmup_time:.0f}ms total, {chunk_count} chunks, content={content_received}")
+            print(f"   └─ Model should stay warm for ~5-10 min")
+
+            # Now wait for the interval before next warmup
+            await asyncio.sleep(warmup_interval)
 
         except asyncio.CancelledError:
             print("🛑 Model warmup task cancelled")
             break
         except Exception as e:
             print(f"⚠️ Warmup request failed: {str(e)}")
-            # Continue anyway - don't let warmup failures break the task
+            import traceback
+            traceback.print_exc()
+            # Wait before retrying
+            await asyncio.sleep(warmup_interval)
 
 
 @asynccontextmanager
@@ -267,6 +278,57 @@ async def warmup_status():
         "warmup_done": _warmup_task.done() if _warmup_task else False,
         "info": "Warmup requests keep the model container warm to reduce Time To First Token (TTFT)"
     }
+
+
+@app.post("/v1/warmup/trigger")
+async def trigger_warmup(provider: BaseAIProvider = Depends(get_provider)):
+    """
+    Manually trigger a warmup request for testing.
+
+    Returns:
+        Warmup timing information
+    """
+    import time
+
+    try:
+        warmup_request = StreamingRequest(
+            messages=[Message(role="user", content="Hi")],
+            max_tokens=50,
+            temperature=0.7
+        )
+
+        print("🧪 Manual warmup triggered via API")
+        start = time.time()
+
+        chunk_count = 0
+        first_chunk_time = None
+        content_received = False
+
+        async for chunk in provider.stream_completion(warmup_request):
+            chunk_count += 1
+            if chunk.content and first_chunk_time is None:
+                first_chunk_time = (time.time() - start) * 1000
+                content_received = True
+
+        total_time = (time.time() - start) * 1000
+
+        result = {
+            "success": True,
+            "ttfc_ms": first_chunk_time,
+            "total_time_ms": total_time,
+            "chunks_received": chunk_count,
+            "content_received": content_received,
+            "message": f"Warmup completed in {total_time:.0f}ms (TTFC: {first_chunk_time:.0f}ms)"
+        }
+
+        print(f"✅ Manual warmup: TTFC={first_chunk_time:.0f}ms, Total={total_time:.0f}ms")
+        return result
+
+    except Exception as e:
+        print(f"❌ Manual warmup failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Warmup failed: {str(e)}")
 
 
 if __name__ == "__main__":
