@@ -393,13 +393,7 @@
 
                     while (true) {
                         const { value, done } = await reader.read();
-                        if (done) {
-                            const totalTime = performance.now() - requestStartTime;
-                            if (firstChunkTime) {
-                                console.log('TTFC:', (firstChunkTime - requestStartTime).toFixed(2), 'ms | Total:', totalTime.toFixed(2), 'ms');
-                            }
-                            break;
-                        }
+                        if (done) break;
 
                         const chunk = decoder.decode(value);
                         const lines = chunk.split('\n');
@@ -409,6 +403,11 @@
                                 const data = line.slice(6);
 
                                 if (data === '[DONE]') {
+                                    // Log timing before returning
+                                    const totalTime = performance.now() - requestStartTime;
+                                    if (firstChunkTime) {
+                                        console.log('TTFC:', (firstChunkTime - requestStartTime).toFixed(2), 'ms | Total:', totalTime.toFixed(2), 'ms');
+                                    }
                                     setIsLoading(false);
                                     return;
                                 }
