@@ -61,7 +61,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         function App() {
             const [input, setInput] = useState('');
@@ -71,6 +71,7 @@
             const [isRecording, setIsRecording] = useState(false);
             const [recognition, setRecognition] = useState(null);
             const [interimTranscript, setInterimTranscript] = useState('');
+            const finalTranscriptRef = useRef('');
 
             useEffect(() => {
                 // Initialize speech recognition
@@ -81,30 +82,33 @@
                     recognitionInstance.continuous = true;
                     recognitionInstance.interimResults = true;
                     recognitionInstance.lang = 'zh-TW';
+                    recognitionInstance.maxAlternatives = 3;
 
                     recognitionInstance.onresult = (event) => {
-                        let finalTranscript = '';
-                        let interimTranscript = '';
+                        let interim = '';
 
-                        // Process ALL results to get complete transcript
-                        for (let i = 0; i < event.results.length; i++) {
+                        // Only process NEW results starting from resultIndex to avoid repetition
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
                             const transcript = event.results[i][0].transcript;
 
                             if (event.results[i].isFinal) {
-                                finalTranscript += transcript;
+                                // Accumulate final results in ref
+                                finalTranscriptRef.current += transcript;
                             } else {
-                                interimTranscript += transcript;
+                                // Collect interim results
+                                interim += transcript;
                             }
                         }
 
-                        // Replace entire interim transcript (no accumulation to avoid repetition)
-                        setInterimTranscript(finalTranscript + interimTranscript);
+                        // Display accumulated finals + current interim
+                        setInterimTranscript(finalTranscriptRef.current + interim);
                     };
 
                     recognitionInstance.onerror = (event) => {
                         setError(`Speech recognition error: ${event.error}`);
                         setIsRecording(false);
                         setInterimTranscript('');
+                        finalTranscriptRef.current = '';
                     };
 
                     recognitionInstance.onend = () => {
@@ -123,6 +127,7 @@
 
                 setError('');
                 setInterimTranscript('');
+                finalTranscriptRef.current = '';
                 setIsRecording(true);
                 recognition.start();
             };
@@ -134,6 +139,7 @@
                     if (interimTranscript) {
                         setInput(prev => prev + interimTranscript);
                         setInterimTranscript('');
+                        finalTranscriptRef.current = '';
                     }
                 }
             };
