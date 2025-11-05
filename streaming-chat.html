@@ -61,7 +61,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         function App() {
             const [input, setInput] = useState('');
@@ -71,6 +71,186 @@
             const [isRecording, setIsRecording] = useState(false);
             const [recognition, setRecognition] = useState(null);
             const [interimTranscript, setInterimTranscript] = useState('');
+            const finalTranscriptRef = useRef('');
+
+            // Simplified to Traditional Chinese character conversion map
+            const simplifiedToTraditional = {
+                '只': '隻',  // measure word for animals
+                '个': '個',  // general measure word
+                '为': '為',  // for, as
+                '么': '麼',  // what
+                '会': '會',  // can, will
+                '听': '聽',  // listen
+                '说': '說',  // speak, say
+                '读': '讀',  // read
+                '写': '寫',  // write
+                '学': '學',  // study, learn
+                '门': '門',  // door, gate
+                '时': '時',  // time
+                '间': '間',  // between, space
+                '对': '對',  // correct, towards
+                '国': '國',  // country
+                '这': '這',  // this
+                '那': '那',  // that (same in both)
+                '来': '來',  // come
+                '里': '裡',  // inside
+                '没': '沒',  // not have
+                '见': '見',  // see
+                '认': '認',  // recognize
+                '让': '讓',  // let, allow
+                '从': '從',  // from
+                '点': '點',  // point, o'clock
+                '两': '兩',  // two (measure)
+                '长': '長',  // long
+                '关': '關',  // close,關係
+                '开': '開',  // open
+                '东': '東',  // east
+                '西': '西',  // west (same in both)
+                '南': '南',  // south (same in both)
+                '北': '北',  // north (same in both)
+                '吗': '嗎',  // question particle
+                '呢': '呢',  // question particle (same in both)
+                '吧': '吧',  // suggestion particle (same in both)
+                '啊': '啊',  // exclamation (same in both)
+                '谢': '謝',  // thank
+                '请': '請',  // please
+                '问': '問',  // ask
+                '题': '題',  // topic, question
+                '帮': '幫',  // help
+                '买': '買',  // buy
+                '卖': '賣',  // sell
+                '电': '電',  // electricity
+                '话': '話',  // speech,话
+                '语': '語',  // language
+                '词': '詞',  // word
+                '汉': '漢',  // Han (Chinese)
+                '边': '邊',  // side, edge
+                '饭': '飯',  // rice, meal
+                '头': '頭',  // head
+                '万': '萬',  // ten thousand
+                '书': '書',  // book
+                '务': '務',  // affairs
+                '机': '機',  // machine
+                '车': '車',  // vehicle
+                '医': '醫',  // medical
+                '办': '辦',  // handle, do
+                '应': '應',  // should, respond
+                '种': '種',  // kind, type
+                '钱': '錢',  // money
+                '还': '還',  // still, return
+                '找': '找',  // find (same in both)
+                '给': '給',  // give
+                '果': '果',  // fruit (same in both)
+                '报': '報',  // report, newspaper
+                '岁': '歲',  // years old
+                '号': '號',  // number
+                '门': '門',  // door
+                '队': '隊',  // team
+                '员': '員',  // member
+                '孙': '孫',  // grandchild
+                '条': '條',  // strip, measure word
+                '块': '塊',  // piece, dollar
+                '张': '張',  // measure word for flat things
+                '过': '過',  // pass, cross
+                '节': '節',  // festival, section
+                '叫': '叫',  // call (same in both)
+                '名': '名',  // name (same in both)
+                '样': '樣',  // manner, kind
+                '经': '經',  // scripture, through
+                '紧': '緊',  // tight
+                '级': '級',  // level
+                '级': '級',  // class
+                '业': '業',  // business
+                '产': '產',  // produce
+                '亚': '亞',  // Asia
+                '刘': '劉',  // surname Liu
+                '齐': '齊',  // neat, together
+                '尔': '爾',  // you (formal)
+                '卫': '衛',  // guard
+                '战': '戰',  // war
+                '记': '記',  // record
+                '难': '難',  // difficult
+                '变': '變',  // change
+                '场': '場',  // field, place
+                '带': '帶',  // belt, bring
+                '际': '際',  // border, occasion
+                '习': '習',  // practice
+                '组': '組',  // group
+                '离': '離',  // leave
+                '错': '錯',  // wrong
+                '历': '歷',  // history
+                '网': '網',  // net
+                '县': '縣',  // county
+                '够': '夠',  // enough
+                '欢': '歡',  // happy
+                '众': '衆',  // crowd
+                '观': '觀',  // observe
+                '尽': '盡',  // exhaust
+                '际': '際',  // occasion
+                '无': '無',  // without
+                '继': '繼',  // continue
+                '验': '驗',  // test
+                '护': '護',  // protect
+                '现': '現',  // appear, now
+                '亿': '億',  // hundred million
+                '计': '計',  // calculate
+                '务': '務',  // business
+                '虽': '雖',  // although
+                '总': '總',  // total
+                '广': '廣',  // wide
+                '楼': '樓',  // building
+                '台': '臺',  // Taiwan, platform
+                '号': '號',  // number
+                '华': '華',  // China, splendid
+                '视': '視',  // look
+                '术': '術',  // art, technique
+                '师': '師',  // teacher
+                '园': '園',  // garden
+                '类': '類',  // category
+                '导': '導',  // guide
+                '属': '屬',  // belong
+                '岛': '島',  // island
+                '环': '環',  // ring
+                '济': '濟',  // aid
+                '压': '壓',  // press
+                '户': '戶',  // household
+                '响': '響',  // sound
+                '龙': '龍',  // dragon
+                '乐': '樂',  // happy
+                '农': '農',  // agriculture
+                '响': '響',  // respond
+                '运': '運',  // transport
+                '陈': '陳',  // surname Chen
+                '极': '極',  // extreme
+                '义': '義',  // righteousness
+                '设': '設',  // establish
+                '线': '線',  // line
+                '处': '處',  // place
+                '简': '簡',  // simple
+                '转': '轉',  // turn
+                '条': '條',  // strip
+                '娘': '娘',  // mother (same in both)
+                '爱': '愛',  // love
+                '猫': '貓',  // cat
+                '狗': '狗',  // dog (same in both)
+                '鸟': '鳥',  // bird
+                '鱼': '魚',  // fish
+                '马': '馬',  // horse
+                '鸡': '雞',  // chicken
+                '鸭': '鴨',  // duck
+                '猪': '豬',  // pig
+                '牛': '牛',  // cow (same in both)
+                '羊': '羊',  // sheep (same in both)
+                '虎': '虎',  // tiger (same in both)
+                '兔': '兔',  // rabbit (same in both)
+                '龙': '龍',  // dragon
+                '蛇': '蛇',  // snake (same in both)
+                '号': '號',  // number, date
+            };
+
+            const convertToTraditional = (text) => {
+                return text.split('').map(char => simplifiedToTraditional[char] || char).join('');
+            };
 
             useEffect(() => {
                 // Initialize speech recognition
@@ -81,33 +261,33 @@
                     recognitionInstance.continuous = true;
                     recognitionInstance.interimResults = true;
                     recognitionInstance.lang = 'zh-TW';
+                    recognitionInstance.maxAlternatives = 3;
 
                     recognitionInstance.onresult = (event) => {
                         let interim = '';
-                        let final = '';
 
+                        // Only process NEW results starting from resultIndex to avoid repetition
                         for (let i = event.resultIndex; i < event.results.length; i++) {
                             const transcript = event.results[i][0].transcript;
-                            
+
                             if (event.results[i].isFinal) {
-                                final += transcript;
+                                // Convert to Traditional Chinese and accumulate final results in ref
+                                finalTranscriptRef.current += convertToTraditional(transcript);
                             } else {
+                                // Collect interim results
                                 interim += transcript;
                             }
                         }
 
-                        // Show interim in real-time for preview
-                        if (interim) {
-                            setInterimTranscript(prev => prev + final + interim);
-                        } else if (final) {
-                            setInterimTranscript(prev => prev + final);
-                        }
+                        // Display accumulated finals + current interim (convert interim too)
+                        setInterimTranscript(finalTranscriptRef.current + convertToTraditional(interim));
                     };
 
                     recognitionInstance.onerror = (event) => {
                         setError(`Speech recognition error: ${event.error}`);
                         setIsRecording(false);
                         setInterimTranscript('');
+                        finalTranscriptRef.current = '';
                     };
 
                     recognitionInstance.onend = () => {
@@ -126,6 +306,7 @@
 
                 setError('');
                 setInterimTranscript('');
+                finalTranscriptRef.current = '';
                 setIsRecording(true);
                 recognition.start();
             };
@@ -137,6 +318,7 @@
                     if (interimTranscript) {
                         setInput(prev => prev + interimTranscript);
                         setInterimTranscript('');
+                        finalTranscriptRef.current = '';
                     }
                 }
             };
