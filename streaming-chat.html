@@ -144,8 +144,7 @@
 
                 // Load speech synthesis voices
                 const loadVoices = () => {
-                    const voices = window.speechSynthesis.getVoices();
-                    console.log('Voices loaded:', voices.length, 'voices available');
+                    window.speechSynthesis.getVoices();
                 };
 
                 // Voices may load asynchronously
@@ -191,13 +190,7 @@
             };
 
             const speakResponse = (text) => {
-                if (!ttsEnabled || !text) {
-                    console.log('TTS skipped - enabled:', ttsEnabled, 'text length:', text?.length);
-                    return;
-                }
-
-                console.log('speakResponse called with text length:', text.length);
-                console.log('Text to speak:', text.substring(0, 100) + '...');
+                if (!ttsEnabled || !text) return;
 
                 // Stop any ongoing speech
                 window.speechSynthesis.cancel();
@@ -206,7 +199,6 @@
                 setTimeout(() => {
                     // Get available voices
                     const voices = window.speechSynthesis.getVoices();
-                    console.log('Available voices count:', voices.length);
 
                     // Find best voice: zh-TW first, then zh-CN, then any zh, then default
                     let selectedVoice = voices.find(v => v.lang === 'zh-TW') ||
@@ -216,25 +208,16 @@
                                        voices.find(v => v.lang.startsWith('zh')) ||
                                        null;
 
-                    if (selectedVoice) {
-                        console.log('Using voice:', selectedVoice.name, '(', selectedVoice.lang, ')');
-                    } else {
-                        console.warn('No Chinese voice found, using default voice');
-                    }
-
                     // Split long text into chunks (some engines have length limits)
-                    const maxLength = 200; // Conservative limit
+                    const maxLength = 200;
                     const chunks = [];
                     for (let i = 0; i < text.length; i += maxLength) {
                         chunks.push(text.substring(i, i + maxLength));
                     }
 
-                    console.log('Split into', chunks.length, 'chunks');
-
                     let currentChunk = 0;
                     const speakNextChunk = () => {
                         if (currentChunk >= chunks.length) {
-                            console.log('All chunks spoken');
                             setIsSpeaking(false);
                             return;
                         }
@@ -248,28 +231,18 @@
                         utterance.pitch = 1.0;
                         utterance.volume = 1.0;
 
-                        utterance.onstart = () => {
-                            console.log('Speech started - chunk', currentChunk + 1, 'of', chunks.length);
-                            setIsSpeaking(true);
-                        };
-
+                        utterance.onstart = () => setIsSpeaking(true);
                         utterance.onend = () => {
-                            console.log('Speech ended - chunk', currentChunk + 1, 'of', chunks.length);
                             currentChunk++;
                             speakNextChunk();
                         };
+                        utterance.onerror = () => setIsSpeaking(false);
 
-                        utterance.onerror = (e) => {
-                            console.error('Speech error on chunk', currentChunk + 1, ':', e.error, 'message:', e.message);
-                            setIsSpeaking(false);
-                        };
-
-                        console.log('Calling speechSynthesis.speak() for chunk', currentChunk + 1);
                         window.speechSynthesis.speak(utterance);
                     };
 
                     speakNextChunk();
-                }, 100); // Small delay after cancel
+                }, 100);
             };
 
             const stopSpeaking = () => {
