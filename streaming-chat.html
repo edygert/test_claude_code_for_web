@@ -72,6 +72,8 @@
             const [isRecording, setIsRecording] = useState(false);
             const [recognition, setRecognition] = useState(null);
             const [interimTranscript, setInterimTranscript] = useState('');
+            const [ttsEnabled, setTtsEnabled] = useState(false);
+            const [isSpeaking, setIsSpeaking] = useState(false);
             const finalTranscriptRef = useRef('');
             const pauseTimeoutRef = useRef(null);
 
@@ -176,10 +178,37 @@
                 }
             };
 
+            const speakResponse = (text) => {
+                if (!ttsEnabled || !text) return;
+
+                // Stop any ongoing speech
+                window.speechSynthesis.cancel();
+
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-TW';  // Traditional Chinese
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+
+                utterance.onstart = () => setIsSpeaking(true);
+                utterance.onend = () => setIsSpeaking(false);
+                utterance.onerror = () => setIsSpeaking(false);
+
+                window.speechSynthesis.speak(utterance);
+            };
+
+            const stopSpeaking = () => {
+                window.speechSynthesis.cancel();
+                setIsSpeaking(false);
+            };
+
             const handleSubmit = async (e) => {
                 e.preventDefault();
 
                 if (!input.trim()) return;
+
+                // Stop any ongoing TTS
+                stopSpeaking();
 
                 setIsLoading(true);
                 setError('');
@@ -189,6 +218,7 @@
                 // Track timing for first chunk
                 const requestStartTime = performance.now();
                 let firstChunkTime = null;
+                let fullResponseText = '';
 
                 try {
                     const res = await fetch('http://localhost:8000/v1/chat/completions', {
@@ -230,6 +260,11 @@
                                         console.log('TTFC:', (firstChunkTime - requestStartTime).toFixed(2), 'ms | Total:', totalTime.toFixed(2), 'ms');
                                     }
                                     setIsLoading(false);
+
+                                    // Speak the response if TTS is enabled
+                                    if (fullResponseText) {
+                                        speakResponse(fullResponseText);
+                                    }
                                     return;
                                 }
 
@@ -259,6 +294,9 @@
                                         if (firstChunkTime === null) {
                                             firstChunkTime = performance.now();
                                         }
+
+                                        // Accumulate full response for TTS
+                                        fullResponseText += content;
 
                                         // Update response state and increment version to force render
                                         setResponse(prev => prev + content);
@@ -293,7 +331,7 @@
                             disabled={isLoading}
                             className={isRecording ? 'recording' : ''}
                         />
-                        <button 
+                        <button
                             type="button"
                             onClick={isRecording ? handleStopRecording : handleStartRecording}
                             disabled={isLoading}
@@ -304,6 +342,22 @@
                         <button type="submit" disabled={isLoading || !input.trim()}>
                             {isLoading ? 'Sending...' : 'Send'}
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => setTtsEnabled(!ttsEnabled)}
+                            style={{ backgroundColor: ttsEnabled ? '#2196F3' : '#757575' }}
+                        >
+                            {ttsEnabled ? '🔊 TTS On' : '🔇 TTS Off'}
+                        </button>
+                        {isSpeaking && (
+                            <button
+                                type="button"
+                                onClick={stopSpeaking}
+                                style={{ backgroundColor: '#ff4444' }}
+                            >
+                                ⏹ Stop Speaking
+                            </button>
+                        )}
                     </form>
 
                     {isRecording && interimTranscript && (
