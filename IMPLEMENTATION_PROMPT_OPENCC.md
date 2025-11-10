@@ -5,9 +5,34 @@ Add server-side Simplified to Traditional Chinese character conversion using Ope
 
 ## Context
 - We have a FastAPI backend server (main.py) handling AI chat requests
-- Frontend uses browser's Speech Recognition API with lang='zh-TW'
-- Sometimes the browser outputs Simplified Chinese characters instead of Traditional
+- Frontend uses browser's Speech Recognition API with lang='zh-TW' for speech input
+- Frontend uses browser's Web Speech Synthesis API for text-to-speech output (zh-TW voice)
+- Sometimes the browser outputs Simplified Chinese characters instead of Traditional during recognition
 - Need to add an API endpoint that converts Simplified → Traditional using OpenCC library
+
+## Current Features Implemented
+### Text-to-Speech (TTS)
+- **Toggle button** to enable/disable TTS (🔊 TTS On / 🔇 TTS Off)
+- **Voice selection fallback**: zh-TW → zh-CN → any zh → default
+- **Text chunking**: Splits long responses into 200-char chunks to handle speech engine limitations
+- **Sequential playback**: Speaks chunks one after another for complete responses
+- **Stop Speaking button**: Appears while speech is active to interrupt playback
+- **Auto-stop**: Cancels ongoing speech when submitting new message
+- **100ms delay** after cancel() for proper cleanup before starting new speech
+- **Language**: Traditional Chinese (zh-TW)
+- **State management**: `ttsEnabled` and `isSpeaking` state variables
+
+### Speech Recognition
+- **Continuous recognition** with interim results
+- **Auto-pause detection**: Transfers text to input after 1 second pause
+- **Language**: Traditional Chinese (zh-TW)
+- **Repetition bug fix**: Only processes new results from resultIndex to avoid text duplication
+- **Recording indicator**: Visual feedback during active recording
+
+### AI Streaming
+- **Incremental display**: Word-by-word streaming with 10ms yielding for browser painting
+- **TTFC timing**: Measures time from request to first chunk
+- **SSE format**: Server-Sent Events for real-time streaming
 
 ---
 
