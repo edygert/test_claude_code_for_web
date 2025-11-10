@@ -80,7 +80,7 @@
             useEffect(() => {
                 // Initialize speech recognition
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                
+
                 if (SpeechRecognition) {
                     const recognitionInstance = new SpeechRecognition();
                     recognitionInstance.continuous = true;
@@ -141,6 +141,18 @@
 
                     setRecognition(recognitionInstance);
                 }
+
+                // Load speech synthesis voices
+                const loadVoices = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    console.log('Voices loaded:', voices.length, 'voices available');
+                };
+
+                // Voices may load asynchronously
+                if (window.speechSynthesis.onvoiceschanged !== undefined) {
+                    window.speechSynthesis.onvoiceschanged = loadVoices;
+                }
+                loadVoices(); // Try loading immediately too
             }, []);
 
             const handleStartRecording = () => {
@@ -184,15 +196,45 @@
                 // Stop any ongoing speech
                 window.speechSynthesis.cancel();
 
+                // Get available voices
+                const voices = window.speechSynthesis.getVoices();
+                console.log('Available voices:', voices.map(v => `${v.name} (${v.lang})`));
+
+                // Find best voice: zh-TW first, then zh-CN, then any zh, then default
+                let selectedVoice = voices.find(v => v.lang === 'zh-TW') ||
+                                   voices.find(v => v.lang.startsWith('zh-TW')) ||
+                                   voices.find(v => v.lang === 'zh-CN') ||
+                                   voices.find(v => v.lang.startsWith('zh-CN')) ||
+                                   voices.find(v => v.lang.startsWith('zh')) ||
+                                   null;
+
+                if (selectedVoice) {
+                    console.log('Using voice:', selectedVoice.name, '(', selectedVoice.lang, ')');
+                } else {
+                    console.warn('No Chinese voice found, using default voice');
+                }
+
                 const utterance = new SpeechSynthesisUtterance(text);
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                }
                 utterance.lang = 'zh-TW';  // Traditional Chinese
                 utterance.rate = 1.0;
                 utterance.pitch = 1.0;
                 utterance.volume = 1.0;
 
-                utterance.onstart = () => setIsSpeaking(true);
-                utterance.onend = () => setIsSpeaking(false);
-                utterance.onerror = () => setIsSpeaking(false);
+                utterance.onstart = () => {
+                    console.log('Speech started');
+                    setIsSpeaking(true);
+                };
+                utterance.onend = () => {
+                    console.log('Speech ended');
+                    setIsSpeaking(false);
+                };
+                utterance.onerror = (e) => {
+                    console.error('Speech error:', e.error);
+                    setIsSpeaking(false);
+                };
 
                 window.speechSynthesis.speak(utterance);
             };
